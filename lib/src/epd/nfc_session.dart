@@ -57,7 +57,7 @@ class NfcSession {
         if (link == null) {
           final failure = LinkException(
             LinkErrorKind.notIsoDep,
-            'Tag found but it does not expose ISO-DEP, so APDUs cannot be sent.',
+            '已发现标签，但它没有暴露 ISO-DEP，无法发送 APDU。',
           );
           onRejected?.call(failure);
           // Keep listening: the user may present a different tag.
@@ -71,10 +71,10 @@ class NfcSession {
         finish(NfcSession._(link, tag));
       },
       onSessionErrorIos: (error) {
-        fail(LinkException(LinkErrorKind.other, 'NFC session error: $error'));
+        fail(LinkException(LinkErrorKind.other, 'NFC 会话出错：$error'));
       },
     ).catchError((Object e) {
-      fail(LinkException(LinkErrorKind.other, 'Could not start NFC session: $e', e));
+      fail(LinkException(LinkErrorKind.other, '无法启动 NFC 会话：$e', e));
     });
 
     // A session that never reports a tag would otherwise wait forever.
@@ -82,9 +82,9 @@ class NfcSession {
       if (!completer.isCompleted) {
         fail(LinkException(
           LinkErrorKind.timedOut,
-          'No usable tag found within ${timeout.inSeconds} s.',
+          '${timeout.inSeconds} 秒内没有发现可用标签。',
         ));
-        NfcManager.instance.stopSession(errorMessageIos: 'No tag found').catchError((_) {});
+        NfcManager.instance.stopSession(errorMessageIos: '未找到标签').catchError((_) {});
       }
     });
 
@@ -122,13 +122,13 @@ class IsoDepLink implements TagLink {
   @override
   Future<ApduResponse> transceive(Uint8List apdu) async {
     if (_closed) {
-      throw LinkException(LinkErrorKind.tagLost, 'Tag session already closed.');
+      throw LinkException(LinkErrorKind.tagLost, '标签会话已关闭。');
     }
     final Uint8List response;
     try {
       response = await _tag.transceive(apdu);
     } catch (e) {
-      throw LinkException(LinkErrorKind.tagLost, 'IsoDep transceive failed: $e', e);
+      throw LinkException(LinkErrorKind.tagLost, 'IsoDep 收发失败：$e', e);
     }
     return _split(response);
   }
@@ -156,13 +156,13 @@ class Iso7816Link implements TagLink {
   @override
   Future<ApduResponse> transceive(Uint8List apdu) async {
     if (_closed) {
-      throw LinkException(LinkErrorKind.tagLost, 'Tag session already closed.');
+      throw LinkException(LinkErrorKind.tagLost, '标签会话已关闭。');
     }
     final Iso7816ResponseApduIos response;
     try {
       response = await _tag.sendCommandRaw(data: apdu);
     } catch (e) {
-      throw LinkException(LinkErrorKind.tagLost, 'ISO 7816 sendCommand failed: $e', e);
+      throw LinkException(LinkErrorKind.tagLost, 'ISO 7816 发送命令失败：$e', e);
     }
     final payload = Uint8List.fromList(response.payload);
     final sw = (response.statusWord1 << 8) | response.statusWord2;
@@ -180,7 +180,7 @@ ApduResponse _split(Uint8List raw) {
   if (raw.length < 2) {
     throw LinkException(
       LinkErrorKind.other,
-      'Response too short to contain a status word (${raw.length} bytes).',
+      '响应过短，无法包含状态字（仅 ${raw.length} 字节）。',
     );
   }
   final payload = Uint8List.sublistView(raw, 0, raw.length - 2);

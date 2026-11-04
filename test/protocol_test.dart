@@ -66,8 +66,8 @@ void main() {
 
   group('status words', () {
     test('known codes are described', () {
-      expect(StatusWords.meaning(0x9000), 'OK');
-      expect(StatusWords.meaning(0x68CA), contains('LOW VOLTAGE'));
+      expect(StatusWords.meaning(0x9000), '成功');
+      expect(StatusWords.meaning(0x68CA), contains('低电压'));
       expect(StatusWords.meaning(0x6985), contains('PIN'));
       expect(StatusWords.meaning(0x1234), '');
     });
@@ -79,7 +79,7 @@ void main() {
         () => bad.requireOk('D4'),
         throwsA(isA<FmscStatusException>()
             .having((e) => e.swHex, 'swHex', '68CA')
-            .having((e) => e.toString(), 'message', contains('LOW VOLTAGE'))),
+            .having((e) => e.toString(), 'message', contains('低电压'))),
       );
       expect(ApduResponse(Uint8List(0), 0x9000).requireOk('ok').isOk, isTrue);
     });

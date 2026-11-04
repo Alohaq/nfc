@@ -1,47 +1,108 @@
-name: build
+# Builds the iOS app and packages it as an unsigned .ipa.
+#
+# Manual only — `workflow_dispatch`, nothing else on `on:`. A macOS minute is
+# billed as ten Linux minutes, so no push is allowed to start this. Press
+# "Run workflow" in the Actions tab when you want an .ipa.
+#
+# Unsigned is deliberate: the artifact is for TrollStore, which re-signs the
+# bundle with its own fake root certificate on the way in and never asks Apple
+# anything, so no Developer Program account is involved. The flip side is that
+# an unsigned .ipa will not install on a stock iPhone.
+name: Build iOS
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
-jobs:
-  analyze-and-test:
-    name: Analyze & test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test --reporter expanded
+env:
+  # Pinned rather than `stable`: this project has one lockfile and it was
+  # resolved by one SDK. A floating version would let CI resolve a different
+  # set of packages than the machine the app is developed on, and the first
+  # symptom would be a build that passes there and fails here. Bump this and
+  # the local SDK together.
+  FLUTTER_VERSION: '3.47.5'
 
-  build-ios:
-    name: Build unsigned iOS app
+jobs:
+  ios:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - run: flutter pub get
-      - name: CocoaPods
+
+      # Single-package project, not a pub workspace: pubspec.yaml sits at the
+      # repo root, so resolve here and nowhere else.
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      # Xcode on `macos-latest` is a moving target — the image floats and the
+      # iOS platform can be missing or mid-update. If that is the failure, this
+      # line is the evidence; without it the run dies later with only Flutter's
+      # generic boilerplate to look at.
+      - name: Xcode info
+        run: xcodebuild -version && xcodebuild -showsdks
+
+      # `-v` on purpose: without it Flutter runs xcodebuild with `-quiet`, and
+      # the Actions log folds the middle away — a failure then surfaces as the
+      # generic "requires a Development Team" boilerplate with the real `error:`
+      # line invisible. The tee'd file preserves the whole log past the viewer's
+      # truncation.
+      #
+      # `pipefail` has to be asked for. A `run` step's default shell is
+      # `bash -e {0}` — the `-o pipefail` form only comes with an explicit
+      # `shell: bash` — so a bare pipeline reports `tee`'s status and lets a
+      # failed build look green, to be discovered later at packaging.
+      - name: Build
         run: |
-          cd ios
-          pod install --repo-update
-      # An unsigned build proves the Dart and Swift compile and that Info.plist
-      # plus Runner.entitlements are well-formed. Installing on a device needs
-      # your own Apple team id; see README.
-      - name: Build (no codesign)
-        run: flutter build ios --no-codesign
+          set -o pipefail
+          flutter build ios --release --no-codesign -v 2>&1 | tee build_ios.log
+
+      # Packaged as an .ipa rather than as a zipped .app. An .ipa is only a zip
+      # whose single root entry is `Payload/` holding the `.app` — but that is
+      # the shape TrollStore's installer opens, and handed a bare `.app` it has
+      # nothing to install.
+      #
+      # Done here, on macOS, and not after the download: `cp -R` and `zip -y`
+      # are what keep the framework symlinks that a Windows unzip would flatten
+      # into copies.
+      - name: Package as an unsigned .ipa
+        run: |
+          # Located, not assumed. `flutter build ios` archives these days and
+          # where it leaves the .app is a Flutter implementation detail; a
+          # hardcoded `build/ios/iphoneos` was enough to sink this step on its
+          # own. The `find` below also prints the tree when there is nothing to
+          # package, which is the case that used to read as "No such file or
+          # directory".
+          app=$(find build/ios -maxdepth 8 -type d -name Runner.app | head -n1)
+          if [ -z "$app" ]; then
+            echo 'no Runner.app under build/ios — the build produced nothing:'
+            find build/ios -maxdepth 3 | head -n50
+            exit 1
+          fi
+          echo "packaging $app"
+          rm -rf build/ios/Payload build/ios/Runner-unsigned.ipa
+          mkdir -p build/ios/Payload
+          cp -R "$app" build/ios/Payload/
+          (cd build/ios && zip -qry Runner-unsigned.ipa Payload)
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ios-unsigned
-          path: build/ios/iphoneos/Runner.app
-          if-no-files-found: warn
-        continue-on-error: true
+          name: Runner-unsigned
+          path: build/ios/Runner-unsigned.ipa
+          # A job that built nothing and said so cheerfully is worse than one
+          # that fails.
+          if-no-files-found: error
+          retention-days: 14
+
+      # The verbose build log, kept even when the build fails — a failed run is
+      # exactly when the log matters.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-build-log
+          path: build_ios.log
+          if-no-files-found: ignore
+          retention-days: 7

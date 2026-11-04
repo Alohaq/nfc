@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import '../epd/hex.dart';
 import '../epd/protocol.dart';
 
-/// Read-only probe screen.
+/// 只读探测页。
 ///
-/// Send order is intentionally the same as the reference tool: D1 info, then
-/// D8 access check. Nothing here writes to the panel, so it is safe to run
-/// repeatedly against an unknown device.
+/// 发送顺序与参考实现一致：先 D1 读信息，再 D8 查权限。这里不会写入屏幕，
+/// 因此可以放心重复执行。
 class ProbePage extends StatefulWidget {
   const ProbePage({
     super.key,
@@ -19,7 +18,7 @@ class ProbePage extends StatefulWidget {
 
   final List<String> log;
 
-  /// Sends one APDU; null result means the transport is gone.
+  /// 发送一条 APDU；返回 null 表示链路已断开。
   final Future<ApduResponse?> Function(String hex) onSendApdu;
 
   final String transportName;
@@ -51,9 +50,9 @@ class _ProbePageState extends State<ProbePage> {
           _ProbeResult(
             request: hex,
             response: response == null
-                ? 'transport closed'
+                ? '链路已关闭'
                 : 'SW=${response.swHex}'
-                    '${response.payload.isEmpty ? '' : ' data=${Hex.of(response.payload)}'}',
+                    '${response.payload.isEmpty ? '' : ' 数据=${Hex.of(response.payload)}'}',
             meaning: response?.swMeaning ?? '',
             ok: response?.isOk ?? false,
           ),
@@ -80,7 +79,7 @@ class _ProbePageState extends State<ProbePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Transport', style: theme.textTheme.titleMedium),
+                Text('当前链路', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 4),
                 Text(widget.transportName,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -94,10 +93,9 @@ class _ProbePageState extends State<ProbePage> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      'This transport cannot send 7-bit short frames '
-                      '(26 / 52 / 7A / 7D). Panels that need a private wake code '
-                      'before ISO-DEP activation will not respond here — '
-                      'no phone NFC radio can send those frames.',
+                      '当前链路无法发送 7 位短帧（26 / 52 / 7A / 7D）。'
+                      '若屏幕需要私有唤醒码才能进入 ISO-DEP，那么在这里不会有任何响应——'
+                      '手机的 NFC 射频本身就不支持发送这类帧。',
                       style: theme.textTheme.bodySmall
                           ?.copyWith(color: theme.colorScheme.onErrorContainer),
                     ),
@@ -111,10 +109,10 @@ class _ProbePageState extends State<ProbePage> {
           controller: _controller,
           style: const TextStyle(fontFamily: 'monospace'),
           decoration: const InputDecoration(
-            labelText: 'APDU (hex)',
+            labelText: 'APDU（十六进制）',
             border: OutlineInputBorder(),
-            helperText: 'Common: 00D1000000 (info), F0D800000005000000000E (access), '
-                'F0DE000001 (status)',
+            helperText: '常用：00D1000000（读信息）、'
+                'F0D800000005000000000E（查权限）、F0DE000001（查状态）',
           ),
           onSubmitted: (_) => _send(),
         ),
@@ -125,11 +123,11 @@ class _ProbePageState extends State<ProbePage> {
               ? const SizedBox(
                   width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.send),
-          label: const Text('Send'),
+          label: const Text('发送'),
         ),
         const SizedBox(height: 16),
         if (_results.isNotEmpty) ...[
-          Text('Responses (newest first)', style: theme.textTheme.titleSmall),
+          Text('响应（最新在上）', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
           for (final r in _results)
             Card(

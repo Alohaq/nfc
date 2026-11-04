@@ -1,4 +1,4 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -21,7 +21,8 @@ class EpdApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Ink panel writer',
+      title: '墨水瓶刷写',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: const Color(0xFF2E7D32),
         useMaterial3: true,
@@ -41,20 +42,20 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(length: 2, vsync: this);
 
-  // --- image state -------------------------------------------------------
+  // --- 图像状态 ----------------------------------------------------------
   ui.Image? _source;
   PreparedFrame? _frame;
   bool _processing = false;
   ProcessOptions _options = const ProcessOptions();
   String? _sourceName;
 
-  // --- nfc state ---------------------------------------------------------
+  // --- NFC 状态 ----------------------------------------------------------
   NfcSession? _session;
   bool _nfcAvailable = false;
-  String? _transportLabel = 'not connected';
+  String _transportLabel = '未连接';
   bool _canShortFrames = false;
 
-  // --- write state -------------------------------------------------------
+  // --- 刷写状态 ----------------------------------------------------------
   WriteStage _stage = WriteStage.idle;
   String _stageMessage = '';
   int _sentPackets = 0;
@@ -64,7 +65,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   final CancelToken _cancel = CancelToken();
   bool _busy = false;
 
-  // --- settings ----------------------------------------------------------
+  // --- 设置 --------------------------------------------------------------
   WriteSettings _settings = const WriteSettings();
   final _pinController = TextEditingController(text: '5265699919');
   final _log = <String>[];
@@ -84,7 +85,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   void _addLog(String line) {
-    final stamp = DateTime.now().toIso8601String().substring(11, 23);
+    final now = DateTime.now();
+    final stamp = '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}:'
+        '${now.second.toString().padLeft(2, '0')}';
     setState(() {
       _log.insert(0, '$stamp  $line');
       if (_log.length > 400) _log.removeLast();
@@ -96,12 +100,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     try {
       available = await NfcSession.isAvailable();
     } catch (e) {
-      _addLog('availability check failed: $e');
+      _addLog('检测 NFC 可用性失败：$e');
     }
     if (mounted) setState(() => _nfcAvailable = available);
   }
 
-  // ------------------------------------------------------------------ image
+  // ------------------------------------------------------------------ 图像
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -131,7 +135,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         _frame = frame;
       });
     } catch (e, st) {
-      _addLog('processing failed: $e');
+      _addLog('图像处理失败：$e');
       debugPrint('$st');
     } finally {
       if (mounted) setState(() => _processing = false);
@@ -143,21 +147,22 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _reprocess();
   }
 
-  // -------------------------------------------------------------------- nfc
+  void _resetOptions() => _updateOptions(const ProcessOptions());
+
+  // -------------------------------------------------------------------- NFC
 
   Future<bool> _ensureSession({required String alert}) async {
-    final existing = _session;
-    if (existing != null) return true;
+    if (_session != null) return true;
     setState(() => _stage = WriteStage.connecting);
     try {
       final session = await NfcSession.start(
         alertMessage: alert,
-        onRejected: (reason) => _addLog('tag rejected: ${reason.message}'),
+        onRejected: (reason) => _addLog('标签被拒绝：${reason.message}'),
       );
       _session = session;
       _transportLabel = session.link.name;
       _canShortFrames = session.link.canSendShortFrames;
-      _addLog('connected via ${session.link.name}');
+      _addLog('已连接：${session.link.name}');
       if (mounted) setState(() {});
       return true;
     } on LinkException catch (e) {
@@ -172,14 +177,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Future<void> _disconnect() async {
     final session = _session;
     _session = null;
-    _transportLabel = 'not connected';
+    _transportLabel = '未连接';
     _canShortFrames = false;
-    await session?.link.close(alertMessage: 'Disconnected');
+    await session?.link.close(alertMessage: '已断开');
     if (mounted) setState(() {});
   }
 
   Future<void> _probe() async {
-    if (!await _ensureSession(alert: 'Hold the phone against the panel')) return;
+    if (!await _ensureSession(alert: '请把手机贴在墨水屏上')) return;
     final link = _session!.link;
     setState(() => _busy = true);
     try {
@@ -204,10 +209,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Future<void> _write() async {
     final plan = _frame?.buildPlan();
     if (plan == null) {
-      _addLog('no image ready');
+      _addLog('还没有可发送的图片');
       return;
     }
-    if (!await _ensureSession(alert: 'Keep the phone on the panel until done')) {
+    if (!await _ensureSession(alert: '请保持手机贴在屏幕上，直到刷写完成')) {
       return;
     }
     final link = _session!.link;
@@ -248,30 +253,30 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     try {
       final bytes = hexParse(text);
       if (bytes.length != 5) {
-        _addLog('PIN must be 5 bytes, got ${bytes.length}');
+        _addLog('PIN 必须为 5 字节，当前 ${bytes.length} 字节');
         return;
       }
       setState(() => _settings = _settings.copyWith(pin: bytes));
-      _addLog('PIN set to ${bytes.length} bytes');
+      _addLog('PIN 已设置为 5 字节');
     } catch (e) {
-      _addLog('bad PIN: $e');
+      _addLog('PIN 格式错误：$e');
     }
   }
 
-  // -------------------------------------------------------------------- ui
+  // -------------------------------------------------------------------- 界面
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ink panel writer'),
+        title: const Text('墨水瓶刷写'),
         bottom: TabBar(
           controller: _tabs,
-          tabs: const [Tab(text: 'Write'), Tab(text: 'Probe')],
+          tabs: const [Tab(text: '刷图'), Tab(text: '诊断')],
         ),
         actions: [
           IconButton(
-            tooltip: _nfcAvailable ? 'NFC ready' : 'NFC unavailable',
+            tooltip: _nfcAvailable ? 'NFC 可用' : 'NFC 不可用',
             icon: Icon(_nfcAvailable ? Icons.nfc : Icons.nfc_outlined,
                 color: _nfcAvailable ? null : Theme.of(context).colorScheme.error),
             onPressed: _refreshAvailability,
@@ -284,10 +289,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           _buildWriteTab(),
           ProbePage(
             log: _log,
-            transportName: _transportLabel ?? 'not connected',
+            transportName: _transportLabel,
             canUseShortFrames: _canShortFrames,
             onSendApdu: (hex) async {
-              if (!await _ensureSession(alert: 'Hold the phone against the panel')) {
+              if (!await _ensureSession(alert: '请把手机贴在墨水屏上')) {
                 return null;
               }
               final bytes = hexParse(hex);
@@ -317,7 +322,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   children: [
                     Expanded(
                       child: Text(
-                        _sourceName ?? 'No image selected',
+                        _sourceName ?? '未选择图片',
                         style: theme.textTheme.titleSmall,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -325,7 +330,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                     FilledButton.tonalIcon(
                       onPressed: _pickImage,
                       icon: const Icon(Icons.image_outlined),
-                      label: const Text('Pick'),
+                      label: const Text('选择图片'),
                     ),
                   ],
                 ),
@@ -341,7 +346,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         ? const Center(child: CircularProgressIndicator())
                         : frame == null
                             ? Center(
-                                child: Text('Pick an image to preview',
+                                child: Text('选择图片后在此预览',
                                     style: theme.textTheme.bodySmall))
                             : RawImage(image: frame.preview, fit: BoxFit.contain),
                   ),
@@ -349,10 +354,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 if (frame != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '${FrameGeometry.width}x${FrameGeometry.height} 路 '
-                    '${frame.options.dither.label} 路 '
-                    '${frame.paletteSize} colours 路 '
-                    '${frame.packed.length} packed bytes',
+                    '${FrameGeometry.width}×${FrameGeometry.height} · '
+                    '${frame.options.dither.label} · '
+                    '${frame.paletteSize} 色 · '
+                    '打包后 ${frame.packed.length} 字节',
                     style: theme.textTheme.bodySmall,
                   ),
                 ],
@@ -373,14 +378,21 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Widget _buildAdjustments() {
     return Card(
       child: ExpansionTile(
-        title: const Text('Image adjustments'),
-        subtitle: Text(_options.isNeutral ? 'defaults' : 'modified'),
+        title: const Text('图像调整'),
+        subtitle: Text(_options.isNeutral ? '默认参数' : '已修改'),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _options.isNeutral ? null : _resetOptions,
+              child: const Text('恢复默认'),
+            ),
+          ),
           Row(
             children: [
-              const Text('Dither'),
-              const SizedBox(width: 12),
+              const SizedBox(width: 72, child: Text('抖动算法')),
+              const SizedBox(width: 8),
               Expanded(
                 child: DropdownButton<DitherMode>(
                   isExpanded: true,
@@ -397,19 +409,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Black & white only'),
+            title: const Text('仅黑白'),
+            subtitle: const Text('只使用黑、白两色，输出更干净'),
             value: _options.blackWhite,
             onChanged: (v) => _updateOptions(_options.copyWith(blackWhite: v)),
           ),
           Row(
             children: [
-              const Text('Fit'),
-              const SizedBox(width: 12),
+              const SizedBox(width: 72, child: Text('适配方式')),
+              const SizedBox(width: 8),
               DropdownButton<BoxFit>(
                 value: _options.fit,
                 items: const [
-                  DropdownMenuItem(value: BoxFit.contain, child: Text('Contain')),
-                  DropdownMenuItem(value: BoxFit.cover, child: Text('Cover')),
+                  DropdownMenuItem(value: BoxFit.contain, child: Text('完整显示')),
+                  DropdownMenuItem(value: BoxFit.cover, child: Text('裁剪填满')),
                 ],
                 onChanged: (v) =>
                     v == null ? null : _updateOptions(_options.copyWith(fit: v)),
@@ -418,21 +431,21 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               DropdownButton<int>(
                 value: _options.rotation,
                 items: const [
-                  DropdownMenuItem(value: 0, child: Text('0掳')),
-                  DropdownMenuItem(value: 90, child: Text('90掳')),
-                  DropdownMenuItem(value: 180, child: Text('180掳')),
-                  DropdownMenuItem(value: 270, child: Text('270掳')),
+                  DropdownMenuItem(value: 0, child: Text('旋转 0°')),
+                  DropdownMenuItem(value: 90, child: Text('旋转 90°')),
+                  DropdownMenuItem(value: 180, child: Text('旋转 180°')),
+                  DropdownMenuItem(value: 270, child: Text('旋转 270°')),
                 ],
                 onChanged: (v) =>
                     v == null ? null : _updateOptions(_options.copyWith(rotation: v)),
               ),
             ],
           ),
-          _slider('Brightness', _options.brightness, 0.5, 1.5,
+          _slider('亮度', _options.brightness, 0.5, 1.5,
               (v) => _updateOptions(_options.copyWith(brightness: v))),
-          _slider('Contrast', _options.contrast, 0.5, 1.5,
+          _slider('对比度', _options.contrast, 0.5, 1.5,
               (v) => _updateOptions(_options.copyWith(contrast: v))),
-          _slider('Scale', _options.scalePercent.toDouble(), 10, 300,
+          _slider('缩放', _options.scalePercent.toDouble(), 10, 300,
               (v) => _updateOptions(_options.copyWith(scalePercent: v.round())),
               divisions: 58, suffix: '%'),
         ],
@@ -445,7 +458,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       {int? divisions, String suffix = ''}) {
     return Row(
       children: [
-        SizedBox(width: 84, child: Text(label)),
+        SizedBox(width: 72, child: Text(label)),
         Expanded(
           child: Slider(
             value: value.clamp(min, max),
@@ -456,7 +469,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           ),
         ),
         SizedBox(
-          width: 56,
+          width: 60,
           child: Text('${value.toStringAsFixed(1)}$suffix',
               textAlign: TextAlign.end,
               style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
@@ -480,27 +493,28 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 Icon(Icons.nfc, color: theme.colorScheme.primary),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(_transportLabel ?? 'not connected',
+                  child: Text(_transportLabel,
                       style: theme.textTheme.bodySmall
                           ?.copyWith(fontFamily: 'monospace')),
                 ),
                 if (_session != null)
-                  TextButton(onPressed: _disconnect, child: const Text('Close')),
+                  TextButton(onPressed: _disconnect, child: const Text('断开')),
               ],
             ),
             const Divider(),
-            Text('${_stage.label}${_stageMessage.isEmpty ? '' : ' 鈥?$_stageMessage'}'),
+            Text('${_stage.label}${_stageMessage.isEmpty ? '' : ' — $_stageMessage'}'),
             if (progress != null) ...[
               const SizedBox(height: 8),
               LinearProgressIndicator(value: progress),
               const SizedBox(height: 4),
-              Text('$_sentPackets / $total packets', style: theme.textTheme.bodySmall),
+              Text('已发送 $_sentPackets / $total 包',
+                  style: theme.textTheme.bodySmall),
             ],
             if (_polls > 0)
-              Text('$_polls status polls', style: theme.textTheme.bodySmall),
+              Text('已查询状态 $_polls 次', style: theme.textTheme.bodySmall),
             if (_info != null) ...[
               const SizedBox(height: 8),
-              Text('Panel: $_info',
+              Text('屏幕：${_info!.toChinese()}',
                   style: theme.textTheme.bodySmall
                       ?.copyWith(fontFamily: 'monospace')),
             ],
@@ -511,7 +525,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   child: OutlinedButton.icon(
                     onPressed: _busy ? null : _probe,
                     icon: const Icon(Icons.search),
-                    label: const Text('Probe'),
+                    label: const Text('探测'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -520,7 +534,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   child: FilledButton.icon(
                     onPressed: _busy || _frame == null ? null : _write,
                     icon: const Icon(Icons.upload),
-                    label: const Text('Upload & refresh'),
+                    label: const Text('上传并刷新'),
                   ),
                 ),
               ],
@@ -535,14 +549,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2)),
                     const SizedBox(width: 8),
-                    const Text('working…'),
+                    const Text('处理中…'),
                     const Spacer(),
                     TextButton(
                       onPressed: () {
                         _cancel.cancel();
-                        _addLog('cancel requested');
+                        _addLog('已请求取消');
                       },
-                      child: const Text('Cancel'),
+                      child: const Text('取消'),
                     ),
                   ],
                 ),
@@ -550,7 +564,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             const SizedBox(height: 8),
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
-              title: const Text('Transfer settings'),
+              title: const Text('传输设置'),
               childrenPadding: const EdgeInsets.only(bottom: 8),
               children: [
                 Row(
@@ -560,7 +574,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         controller: _pinController,
                         style: const TextStyle(fontFamily: 'monospace'),
                         decoration: const InputDecoration(
-                          labelText: 'PIN (10 hex chars)',
+                          labelText: 'PIN（10 位十六进制）',
                           border: OutlineInputBorder(),
                           isDense: true,
                         ),
@@ -569,23 +583,23 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                     const SizedBox(width: 8),
                     OutlinedButton(
                       onPressed: () => _applyPin(_pinController.text),
-                      child: const Text('Apply'),
+                      child: const Text('应用'),
                     ),
                   ],
                 ),
-                _slider('Packet gap', _settings.packetGapMs.toDouble(), 0, 100,
+                _slider('包间隔', _settings.packetGapMs.toDouble(), 0, 100,
                     (v) => setState(() => _settings =
                         _settings.copyWith(packetGapMs: v.round())),
                     divisions: 20, suffix: 'ms'),
-                _slider('Pre-D4 wait', _settings.preRefreshWaitMs.toDouble(), 0, 5000,
+                _slider('刷新前等待', _settings.preRefreshWaitMs.toDouble(), 0, 5000,
                     (v) => setState(() => _settings =
                         _settings.copyWith(preRefreshWaitMs: v.round())),
                     divisions: 50, suffix: 'ms'),
-                _slider('Power-on wait', _settings.powerOnDelayMs.toDouble(), 100, 12700,
+                _slider('上电等待', _settings.powerOnDelayMs.toDouble(), 100, 12700,
                     (v) => setState(() => _settings = _settings.copyWith(
                         powerOnDelayMs: (v / 100).round() * 100)),
                     divisions: 126, suffix: 'ms'),
-                _slider('Poll interval', _settings.pollIntervalMs.toDouble(), 120, 2000,
+                _slider('查询间隔', _settings.pollIntervalMs.toDouble(), 120, 2000,
                     (v) => setState(() =>
                         _settings = _settings.copyWith(pollIntervalMs: v.round())),
                     divisions: 47, suffix: 'ms'),
@@ -600,8 +614,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Widget _buildLogCard() {
     return Card(
       child: ExpansionTile(
-        title: const Text('Log'),
-        subtitle: Text('${_log.length} lines'),
+        title: const Text('日志'),
+        subtitle: Text('${_log.length} 行'),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           Container(
@@ -625,7 +639,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: () => setState(_log.clear),
-              child: const Text('Clear'),
+              child: const Text('清空'),
             ),
           ),
         ],
@@ -634,5 +648,5 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 }
 
-/// Thin alias so the UI reads naturally; parsing rules live in [Hex].
+/// 便于界面阅读的别名；解析规则在 [Hex] 中。
 Uint8List hexParse(String text) => Hex.parse(text);

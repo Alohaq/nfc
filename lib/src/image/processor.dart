@@ -11,9 +11,9 @@ enum DitherMode { atkinson, floydSteinberg, off }
 
 extension DitherModeLabel on DitherMode {
   String get label => switch (this) {
-        DitherMode.atkinson => 'Atkinson',
+        DitherMode.atkinson => 'Atkinson（默认）',
         DitherMode.floydSteinberg => 'Floyd–Steinberg',
-        DitherMode.off => 'Off',
+        DitherMode.off => '不做抖动',
       };
 }
 

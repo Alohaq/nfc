@@ -1,4 +1,4 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 
 import 'hex.dart';
 
@@ -111,41 +111,41 @@ class FmscStatusException implements Exception {
 /// Status word meanings, copied from ink_nfc_fmsc/protocol.py STATUS.
 class StatusWords {
   static const Map<int, String> _map = {
-    0x9000: 'OK',
-    0x6401: 'execution error / card failure',
-    0x6449: 'EEPROM configuration error',
-    0x6450: 'panel init data error',
-    0x6451: 'panel init packet has a bad TAG',
-    0x6452: 'panel init content error',
-    0x6453: 'panel init sequence incomplete',
-    0x6454: 'panel refresh failed',
-    0x6455: 'panel re-position failed',
-    0x646A: 'TLV count over limit',
-    0x6501: 'NVM write interrupted',
-    0x6502: 'low power, NVM write stopped (not a PIN error)',
-    0x6503: 'NVM address invalid',
-    0x6506: 'NVM permission error',
-    0x6508: 'NVM length error',
-    0x6509: 'bad command parameter',
-    0x650A: 'execution aborted',
-    0x650F: 'no execution permission',
-    0x6700: 'wrong Lc/Le',
-    0x6781: 'bad total packet length',
-    0x68C6: 'panel reposition failed / panel missing',
-    0x68CA: 'LOW VOLTAGE WARNING',
-    0x68CB: 'refresh timeout warning',
-    0x6982: 'security status not satisfied',
-    0x6985: 'conditions not satisfied (PIN required)',
-    0x6986: 'reposition failed / panel absent',
-    0x698A: 'low voltage warning',
-    0x6991: 'compression algorithm not initialised',
-    0x6992: 'decompression failed',
-    0x6993: 'bad decompressed length',
-    0x6994: 'bad compressed length',
-    0x6995: 'image packet sequence mismatch',
-    0x6A80: 'bad data parameter',
-    0x6A86: 'bad P1/P2',
-    0x6A96: 'bad image format code',
+    0x9000: '成功',
+    0x6401: '执行未完成 / 卡片未就绪',
+    0x6449: 'EEPROM 配置错误',
+    0x6450: '屏幕初始化数据错误',
+    0x6451: '屏幕初始化包含错误 TAG',
+    0x6452: '屏幕初始化内容错误',
+    0x6453: '屏幕初始化序列不完整',
+    0x6454: '屏幕刷新失败',
+    0x6455: '屏幕复位失败',
+    0x646A: 'TLV 数量超限',
+    0x6501: '写入 NVM 被中断',
+    0x6502: '电量过低，NVM 写入中止（非 PIN 错误）',
+    0x6503: 'NVM 地址无效',
+    0x6506: 'NVM 权限错误',
+    0x6508: 'NVM 长度错误',
+    0x6509: '命令参数错误',
+    0x650A: '执行已中止',
+    0x650F: '无执行权限',
+    0x6700: 'Lc/Le 长度错误',
+    0x6781: '数据包总长度错误',
+    0x68C6: '屏幕复位失败 / 屏幕不存在',
+    0x68CA: '低电压告警',
+    0x68CB: '刷新超时告警',
+    0x6982: '安全状态不满足',
+    0x6985: '使用条件不满足（需要 PIN）',
+    0x6986: '复位失败 / 屏幕未就位',
+    0x698A: '低电压告警',
+    0x6991: '压缩算法未初始化',
+    0x6992: '解压失败',
+    0x6993: '解压后长度不正确',
+    0x6994: '压缩长度错误',
+    0x6995: '图像分包序号不匹配',
+    0x6A80: '数据参数错误',
+    0x6A86: 'P1/P2 参数错误',
+    0x6A96: '图像格式码错误',
   };
 
   static String meaning(int sw) => _map[sw] ?? '';
@@ -225,6 +225,10 @@ class DeviceInfo {
       width == 552 && height == 768 && colors == 4 && supportsCompression;
 
   String get uidHex => Hex.of(uid);
+
+  /// 中文摘要，用于界面与日志。
+  String toChinese() => '$width×$height，$colors 色，'
+      '压缩=${supportsCompression ? '支持' : '不支持'}，固件 $firmware，UID $uidHex';
 
   @override
   String toString() => '$width x $height, $colors colours, '

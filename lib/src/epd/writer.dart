@@ -21,16 +21,16 @@ enum WriteStage {
 
 extension WriteStageLabel on WriteStage {
   String get label => switch (this) {
-        WriteStage.idle => 'Idle',
-        WriteStage.connecting => 'Connecting',
-        WriteStage.activating => 'Activating panel',
-        WriteStage.readingInfo => 'Reading device info',
-        WriteStage.authenticating => 'Authenticating',
-        WriteStage.transferring => 'Sending image',
-        WriteStage.refreshing => 'Triggering refresh',
-        WriteStage.polling => 'Waiting for panel',
-        WriteStage.done => 'Done',
-        WriteStage.failed => 'Failed',
+        WriteStage.idle => '空闲',
+        WriteStage.connecting => '正在连接',
+        WriteStage.activating => '正在激活屏幕',
+        WriteStage.readingInfo => '正在读取设备信息',
+        WriteStage.authenticating => '正在认证',
+        WriteStage.transferring => '正在发送图像',
+        WriteStage.refreshing => '正在触发刷新',
+        WriteStage.polling => '正在等待屏幕刷新',
+        WriteStage.done => '已完成',
+        WriteStage.failed => '失败',
       };
 }
 
@@ -78,8 +78,10 @@ class WriteOutcome {
   final bool busyObserved;
 
   String get summary => succeeded
-      ? 'Refresh confirmed by the panel ($polls polls).'
-      : 'Stopped at "${stage.label}"${error == null ? '' : ': $error'}';
+      ? (busyObserved
+          ? '刷新已确认（共查询 $polls 次状态）。'
+          : '屏幕已回到空闲，但全程未观测到忙状态，刷新结果无法确认。')
+      : '在「${stage.label}」阶段停止${error == null ? '' : '：$error'}';
 }
 
 /// Tuning knobs surfaced in the UI. Defaults copied from epd_writer.WriteJob.
@@ -152,15 +154,15 @@ class Writer {
       _stage(WriteStage.readingInfo);
       final d1 = await link.transceive(Apdu.readInfo);
       info = DeviceInfo.parse(d1);
-      onLog?.call('D1 -> $info');
+      onLog?.call('D1 返回：${info.toChinese()}');
 
-      _stage(WriteStage.authenticating, 'checking access rights');
+      _stage(WriteStage.authenticating, '正在检查访问权限');
       final d8 = await link.transceive(Apdu.checkAccess);
-      onLog?.call('D8 -> SW=${d8.swHex} ${d8.swMeaning}');
+      onLog?.call('D8 返回：SW=${d8.swHex} ${d8.swMeaning}');
       if (d8.sw == 0x6985) {
-        onLog?.call('Panel requires the 5-byte PIN before writing.');
+        onLog?.call('该屏幕需要 5 字节 PIN 才能写入。');
       } else if (!d8.isOk) {
-        onLog?.call('Unexpected status word. Panel may need a vendor-specific flow.');
+        onLog?.call('状态字异常，该屏幕可能需要厂商专有流程。');
       }
       _stage(WriteStage.done);
       return WriteOutcome(
@@ -207,66 +209,65 @@ class Writer {
 
       _stage(WriteStage.readingInfo);
       info = DeviceInfo.parse(await link.transceive(Apdu.readInfo));
-      onLog?.call('D1 -> $info');
+      onLog?.call('D1 返回：${info.toChinese()}');
       if (!info.isTargetPanel) {
-        onLog?.call('WARNING: panel is not 552x768 four-colour with compression; '
-            'pixel layout may be wrong.');
+        onLog?.call('警告：屏幕不是 552×768 四色且支持压缩的型号，像素排布可能不对。');
       }
 
       _stage(WriteStage.authenticating);
       var d8 = await link.transceive(Apdu.checkAccess);
-      onLog?.call('D8 -> SW=${d8.swHex}');
+      onLog?.call('D8 返回：SW=${d8.swHex}');
       if (d8.sw == 0x6985) {
         if (settings.pin.length != 5) {
-          throw StateError('PIN must be exactly 5 bytes');
+          throw StateError('PIN 必须正好 5 字节');
         }
         final pinApdu = Apdu.verifyPin(settings.pin);
         final pinResult = await link.transceive(pinApdu);
-        onLog?.call('PIN -> SW=${pinResult.swHex}');
-        pinResult.requireOk('verify PIN');
+        onLog?.call('PIN 返回：SW=${pinResult.swHex}');
+        pinResult.requireOk('PIN 认证');
         d8 = await link.transceive(Apdu.checkAccess);
-        onLog?.call('D8 after PIN -> SW=${d8.swHex}');
-        d8.requireOk('access rights after PIN');
+        onLog?.call('PIN 后再次 D8：SW=${d8.swHex}');
+        d8.requireOk('PIN 后的访问权限检查');
       } else if (!d8.isOk) {
         d8.requireOk('access rights');
       }
 
       _stage(WriteStage.transferring,
-          '${plan.packetCount} packets, ${plan.blockCount} blocks');
+          '${plan.packetCount} 个数据包，${plan.blockCount} 个块');
       for (var i = 0; i < plan.packets.length; i++) {
         _checkCancelled();
         final p = plan.packets[i];
         final r = await link.transceive(p.apdu);
         if (!r.isOk) {
-          throw FmscStatusException('D3 block ${p.block} packet ${p.sub}', r.sw);
+          throw FmscStatusException('图像传输 块${p.block}/包${p.sub}', r.sw);
         }
         sent++;
         onProgress?.call(WriteProgress(
           stage: WriteStage.transferring,
           completedPackets: sent,
           totalPackets: plan.packetCount,
-          message: 'block ${p.block} / ${plan.blockCount}',
+          message: '块 ${p.block} / ${plan.blockCount}',
         ));
         if (settings.packetGapMs > 0 && i + 1 < plan.packets.length) {
           await Future<void>.delayed(Duration(milliseconds: settings.packetGapMs));
         }
       }
-      onLog?.call('upload complete: $sent/${plan.packetCount} packets');
+      onLog?.call('图像发送完成：$sent/${plan.packetCount} 包');
 
       if (settings.preRefreshWaitMs > 0) {
         _stage(WriteStage.refreshing,
-            'holding field ${settings.preRefreshWaitMs} ms before D4');
+            '刷新前保持射频场 ${settings.preRefreshWaitMs} 毫秒');
         await Future<void>.delayed(Duration(milliseconds: settings.preRefreshWaitMs));
         _checkCancelled();
       }
 
       _stage(WriteStage.refreshing);
       final refresh = Apdu.refresh(powerOnDelayMs: settings.powerOnDelayMs);
-      final d4 = await send(refresh, 'trigger refresh');
-      onLog?.call('D4 -> SW=${d4.swHex}');
+      final d4 = await send(refresh, '触发刷新');
+      onLog?.call('D4 返回：SW=${d4.swHex}');
       if (d4.payload.isNotEmpty &&
           !(d4.payload.length == 1 && (d4.payload[0] == 0 || d4.payload[0] == 1))) {
-        throw StateError('Unexpected D4 payload: ${d4.payload}');
+        throw StateError('D4 返回了意外的数据：${d4.payload}');
       }
 
       _stage(WriteStage.polling);
@@ -275,22 +276,22 @@ class Writer {
         _checkCancelled();
         if (stopwatch.elapsedMilliseconds >= deadline) {
           throw TimeoutException(
-              'refresh budget of ${settings.refreshBudgetMs} ms exhausted');
+              '刷新等待超过 ${settings.refreshBudgetMs} 毫秒预算');
         }
-        final r = await send(Apdu.readStatus, 'poll status');
+        final r = await send(Apdu.readStatus, '查询刷新状态');
         polls++;
         if (r.payload.isEmpty) {
-          throw StateError('DE returned no status byte');
+          throw StateError('DE 未返回状态字节');
         }
         final busy = r.payload[0];
         if (busy != 0 && busy != 1) {
-          throw StateError('DE returned unknown status ${busy.toRadixString(16)}');
+          throw StateError('DE 返回未知状态 ${busy.toRadixString(16)}');
         }
         if (busy == 1) sawBusy = true;
         onProgress?.call(WriteProgress(
           stage: WriteStage.polling,
           polls: polls,
-          message: busy == 1 ? 'panel busy' : 'panel idle',
+          message: busy == 1 ? '屏幕正在刷新' : '屏幕空闲',
         ));
 
         if (busy == 0) {
@@ -301,7 +302,7 @@ class Writer {
               await Future<void>.delayed(
                   Duration(milliseconds: settings.pollIntervalMs));
               _checkCancelled();
-              final again = await send(Apdu.readStatus, 'poll status');
+              final again = await send(Apdu.readStatus, '查询刷新状态');
               polls++;
               if (again.payload.isEmpty || again.payload[0] != 0) {
                 sawBusy = true; // still working
@@ -313,7 +314,7 @@ class Writer {
                   Duration(milliseconds: settings.pollIntervalMs));
               continue;
             }
-            _stage(WriteStage.done, 'refresh confirmed');
+            _stage(WriteStage.done, '刷新已确认');
             return WriteOutcome(
               succeeded: true,
               stage: WriteStage.done,
@@ -324,7 +325,7 @@ class Writer {
             );
           }
           _stage(WriteStage.done,
-              'panel reports idle, but BUSY was never observed 鈥?refresh unconfirmed');
+              '屏幕报告空闲，但全程未观测到忙状态，刷新未确认');
           return WriteOutcome(
             succeeded: true,
             stage: WriteStage.done,
