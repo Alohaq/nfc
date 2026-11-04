@@ -1,0 +1,47 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  analyze-and-test:
+    name: Analyze & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test --reporter expanded
+
+  build-ios:
+    name: Build unsigned iOS app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+      # An unsigned build proves the Dart and Swift compile and that Info.plist
+      # plus Runner.entitlements are well-formed. Installing on a device needs
+      # your own Apple team id; see README.
+      - name: Build (no codesign)
+        run: flutter build ios --no-codesign
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned
+          path: build/ios/iphoneos/Runner.app
+          if-no-files-found: warn
+        continue-on-error: true

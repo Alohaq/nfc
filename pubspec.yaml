@@ -1,0 +1,28 @@
+﻿name: nfc
+description: "NFC writer for FMSC / Huawei ink panels (552x768 four-colour)."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # ISO-DEP / ISO 7816 APDU transport on Android and iOS.
+  nfc_manager: ^4.2.1
+
+  # Gallery picker for the source image.
+  image_picker: ^1.2.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
